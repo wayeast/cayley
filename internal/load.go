@@ -27,6 +27,10 @@ func Load(qw graph.QuadWriter, cfg *config.Config, path, typ string) error {
 // If no loadFn is provided, db.Load is called.
 func DecompressAndLoad(qw graph.QuadWriter, cfg *config.Config, path, typ string, loadFn func(graph.QuadWriter, *config.Config, quad.Unmarshaler) error) error {
 	var r io.Reader
+	var u *url.URL
+	var f *os.File
+	var reading_stdin = false
+	var err error
 
 	if path == "" {
 		path = cfg.DatabasePath
@@ -34,20 +38,25 @@ func DecompressAndLoad(qw graph.QuadWriter, cfg *config.Config, path, typ string
 	if path == "" {
 		return nil
 	}
-	u, err := url.Parse(path)
-	if err != nil || u.Scheme == "file" || u.Scheme == "" {
+	if path == "-" {
+		r = os.Stdin
+		reading_stdin = true
+	} else {
+		u, err = url.Parse(path)
+	}
+	if !reading_stdin && (err != nil || u.Scheme == "file" || u.Scheme == "") {
 		// Don't alter relative URL path or non-URL path parameter.
 		if u.Scheme != "" && err == nil {
 			// Recovery heuristic for mistyping "file://path/to/file".
 			path = filepath.Join(u.Host, u.Path)
 		}
-		f, err := os.Open(path)
+		f, err = os.Open(path)
 		if err != nil {
 			return fmt.Errorf("could not open file %q: %v", path, err)
 		}
 		defer f.Close()
 		r = f
-	} else {
+	} else if !reading_stdin {
 		res, err := client.Get(path)
 		if err != nil {
 			return fmt.Errorf("could not get resource <%s>: %v", u, err)
